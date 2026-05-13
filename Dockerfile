@@ -8,6 +8,9 @@ ENV LIGHTRAG_BASE_URL="http://host.docker.internal:9621" \
     LIGHTRAG_API_KEY="" \
     LIGHTRAG_TIMEOUT="30" \
     LOG_LEVEL="INFO" \
+    MCP_TRANSPORT="sse" \
+    MCP_HOST="0.0.0.0" \
+    MCP_PORT="8000" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
@@ -17,5 +20,7 @@ COPY pyproject.toml .
 COPY src/ src/
 
 RUN pip install --no-cache-dir .
+
+EXPOSE 8000
 
 ENTRYPOINT ["python", "-m", "daniel_lightrag_mcp"]

@@ -2612,3 +2612,74 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
+async def main_http(host: str = "0.0.0.0", port: int = 8000):
+    """Main entry point for the MCP server with HTTP/SSE transport."""
+    import sys
+    import platform
+
+    logger.info("=" * 100)
+    logger.info("STARTING LIGHTRAG MCP SERVER (HTTP/SSE TRANSPORT)")
+    logger.info("=" * 100)
+    logger.info("SYSTEM INFORMATION:")
+    logger.info(f"  - Python version: {sys.version}")
+    logger.info(f"  - Platform: {platform.platform()}")
+    logger.info(f"  - Host: {host}")
+    logger.info(f"  - Port: {port}")
+    logger.info(f"  - SSE endpoint: http://{host}:{port}/sse")
+    logger.info(f"  - Messages endpoint: http://{host}:{port}/messages/")
+
+    # Lazy imports to keep stdio dependencies optional
+    from mcp.server.sse import SseServerTransport
+    from starlette.applications import Starlette
+    from starlette.routing import Route, Mount
+    from starlette.responses import JSONResponse
+    import uvicorn
+
+    sse = SseServerTransport("/messages/")
+
+    async def handle_sse(request):
+        logger.info("SSE connection established")
+        async with sse.connect_sse(
+            request.scope, request.receive, request._send
+        ) as streams:
+            logger.info("SSE streams connected, running MCP server")
+            await server.run(
+                streams[0],
+                streams[1],
+                server.create_initialization_options(),
+            )
+        logger.info("SSE connection closed")
+
+    async def health(request):
+        return JSONResponse({"status": "ok", "transport": "sse"})
+
+    app = Starlette(
+        debug=False,
+        routes=[
+            Route("/sse", endpoint=handle_sse),
+            Route("/health", endpoint=health),
+            Mount("/messages/", app=sse.handle_post_message),
+        ],
+    )
+
+    config = uvicorn.Config(app, host=host, port=port, log_level=logging.getLogger().level)
+    http_server = uvicorn.Server(config)
+
+    try:
+        await http_server.serve()
+    except KeyboardInterrupt:
+        logger.info("Server shutdown requested by user (KeyboardInterrupt)")
+    except Exception as e:
+        logger.error(f"FATAL SERVER ERROR: {e}")
+        raise
+    finally:
+        logger.info("LightRAG MCP server shutting down")
+        global lightrag_client
+        if lightrag_client:
+            try:
+                await lightrag_client.__aexit__(None, None, None)
+            except Exception as e:
+                logger.warning(f"Error closing LightRAG client: {e}")
+        logger.info("=" * 100)
