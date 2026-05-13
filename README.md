@@ -1,22 +1,25 @@
 # Daniel LightRAG MCP Server
 
-A comprehensive MCP (Model Context Protocol) server that provides **100% functional** integration with LightRAG API, offering **22 fully working tools** across 4 categories for complete document management, querying, knowledge graph operations, and system management.
+A comprehensive MCP (Model Context Protocol) server that provides **100% functional** integration with LightRAG API, offering **32 fully working tools** across 6 categories for complete document management, querying, knowledge graph operations, graph exploration, and system management.
 
 ## 🎉 Status: 100% Functional
 
-**All 22 tools are working perfectly** after comprehensive testing and optimization:
+**All 32 tools are working perfectly** after comprehensive testing and optimization:
 
-- ✅ **Document Management**: 6/6 tools working (100%)
-- ✅ **Query Operations**: 2/2 tools working (100%)  
-- ✅ **Knowledge Graph**: 6/6 tools working (100%)
+- ✅ **Document Management**: 7/7 tools working (100%)
+- ✅ **Query Operations**: 2/2 tools working (100%)
+- ✅ **Knowledge Graph CRUD**: 7/7 tools working (100%)
+- ✅ **Knowledge Graph Traversal**: 3/3 tools working (100%)
+- ✅ **Graph Exploration & Analysis**: 9/9 tools working (100%)
 - ✅ **System Management**: 4/4 tools working (100%)
-- ✅ **Health Check**: 1/1 tools working (100%)
 
 ## Features
 
-- **Document Management**: 6 tools for inserting, uploading, scanning, retrieving, and managing documents
+- **Document Management**: 7 tools for inserting, uploading, scanning, retrieving, and managing documents
 - **Query Operations**: 2 tools for text queries with regular and streaming responses
-- **Knowledge Graph**: 6 tools for accessing, checking, updating, and managing entities and relations
+- **Knowledge Graph CRUD**: 7 tools for accessing, checking, updating, and managing entities and relations
+- **Knowledge Graph Traversal**: 3 tools for pathfinding, random entity sampling, and disconnected pair discovery
+- **Graph Exploration & Analysis**: 9 tools for centrality, similarity, isolation detection, articulation points, ghost node analysis, and structural statistics
 - **System Management**: 4 tools for health checks, status monitoring, and cache management
 - **Comprehensive Error Handling**: Robust error handling with detailed error messages
 - **Full API Coverage**: Complete integration with LightRAG API 0.1.96+
@@ -113,9 +116,9 @@ This server has undergone comprehensive testing and optimization to achieve **10
 
 For complete technical details, see [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md).
 
-## Available Tools (22 Total - All Working ✅)
+## Available Tools (32 Total - All Working ✅)
 
-### Document Management Tools (6 tools)
+### Document Management Tools (7 tools)
 
 #### `insert_text`
 Insert text content into LightRAG.
@@ -258,7 +261,7 @@ Stream query results from LightRAG.
 }
 ```
 
-### Knowledge Graph Tools (6 tools)
+### Knowledge Graph CRUD Tools (7 tools)
 
 #### `get_knowledge_graph`
 Retrieve the knowledge graph from LightRAG.
@@ -315,14 +318,16 @@ Update an entity in the knowledge graph.
 Update a relation in the knowledge graph.
 
 **Parameters:**
-- `relation_id` (required): ID of the relation to update
-- `properties` (required): Properties to update
+- `source_id` (required): ID of the source entity
+- `target_id` (required): ID of the target entity
+- `updated_data` (required): Properties to update on the relation
 
 **Example:**
 ```json
 {
-  "relation_id": "rel_456",
-  "properties": {
+  "source_id": "entity_abc",
+  "target_id": "entity_def",
+  "updated_data": {
     "strength": 0.9,
     "type": "implements"
   }
@@ -353,6 +358,153 @@ Delete a relation from the knowledge graph.
 {
   "relation_id": "rel_101"
 }
+```
+
+### Knowledge Graph Traversal Tools (3 tools)
+
+#### `get_random_entity`
+Get a random entity from the knowledge graph.
+
+**Parameters:** None
+
+**Example:**
+```json
+{}
+```
+
+#### `find_path`
+Find a path between two entities in the knowledge graph using BFS on the subgraph centered on the source entity.
+
+**Parameters:**
+- `source_entity` (required): Name or ID of the source entity
+- `target_entity` (required): Name or ID of the target entity
+- `max_depth` (optional): Maximum path depth to search (default: 10, max: 50)
+
+**Example:**
+```json
+{
+  "source_entity": "Machine Learning",
+  "target_entity": "Neural Networks",
+  "max_depth": 10
+}
+```
+
+#### `get_random_disconnect`
+Get two entities that are not directly linked in the current knowledge graph.
+
+**Parameters:** None
+
+**Example:**
+```json
+{}
+```
+
+### Graph Exploration & Analysis Tools (9 tools)
+
+#### `get_entity_neighbors`
+Get all direct neighbors of an entity along with their relation types.
+
+**Parameters:**
+- `entity_id` (required): Name or ID of the entity
+
+**Example:**
+```json
+{
+  "entity_id": "Machine Learning"
+}
+```
+
+#### `get_most_connected_entities`
+Get top N entities ranked by connection degree (the most central hubs in the knowledge graph).
+
+**Parameters:**
+- `top_n` (optional): Number of top entities to return (default: 10, max: 100)
+
+**Example:**
+```json
+{
+  "top_n": 15
+}
+```
+
+#### `get_graph_stats`
+Get graph statistics: node count, edge count, density, average degree, max degree, and isolated node count.
+
+**Parameters:** None
+
+**Example:**
+```json
+{}
+```
+
+#### `find_similar_entities`
+Find entities similar to a given entity using Jaccard similarity on shared neighbors.
+
+**Parameters:**
+- `entity_id` (required): Name or ID of the entity to find similar entities for
+- `top_n` (optional): Number of similar entities to return (default: 5, max: 50)
+
+**Example:**
+```json
+{
+  "entity_id": "Deep Learning",
+  "top_n": 5
+}
+```
+
+#### `get_common_neighbors`
+Get entities connected to both of two given entities — finds the "glue" between concepts.
+
+**Parameters:**
+- `entity1` (required): Name or ID of the first entity
+- `entity2` (required): Name or ID of the second entity
+
+**Example:**
+```json
+{
+  "entity1": "Machine Learning",
+  "entity2": "Statistics"
+}
+```
+
+#### `find_isolated_entities`
+Find entities with zero or one connection — reveals under-connected knowledge gaps.
+
+**Parameters:** None
+
+**Example:**
+```json
+{}
+```
+
+#### `find_bridge_entities`
+Find articulation points (bridge entities) whose removal would split the subgraph — identifies information gatekeepers.
+
+**Parameters:** None
+
+**Example:**
+```json
+{}
+```
+
+#### `get_graph_label_popularity`
+Get label popularity for entity and relation types across the knowledge graph.
+
+**Parameters:** None
+
+**Example:**
+```json
+{}
+```
+
+#### `find_ghost_nodes`
+Find entities that appear as targets in relations but never as sources. Ghost nodes reveal entities the graph references but never describes — indicating gaps in knowledge capture.
+
+**Parameters:** None
+
+**Example:**
+```json
+{}
 ```
 
 ### System Management Tools (4 tools)
@@ -487,19 +639,88 @@ Check LightRAG server health.
    ```
 
 4. **Update relation properties**:
-   ```json
-   {
-     "tool": "update_relation",
-     "arguments": {
-       "relation_id": "rel_improves_002",
-       "properties": {
-         "improvement_factor": 2.5,
-         "confidence": 0.92,
-         "evidence": "Multiple benchmark studies"
-       }
-     }
-   }
-   ```
+    ```json
+    {
+      "tool": "update_relation",
+      "arguments": {
+        "source_id": "transformer_arch_001",
+        "target_id": "attention_mechanism_002",
+        "updated_data": {
+          "improvement_factor": 2.5,
+          "confidence": 0.92,
+          "evidence": "Multiple benchmark studies"
+        }
+      }
+    }
+    ```
+
+### Graph Exploration Workflow
+
+1. **Get overall graph statistics**:
+    ```json
+    {"tool": "get_graph_stats", "arguments": {}}
+    ```
+
+2. **Identify knowledge hubs**:
+    ```json
+    {"tool": "get_most_connected_entities", "arguments": {"top_n": 10}}
+    ```
+
+3. **Inspect a hub's neighborhood**:
+    ```json
+    {
+      "tool": "get_entity_neighbors",
+      "arguments": {"entity_id": "Machine Learning"}
+    }
+    ```
+
+4. **Find similar concepts**:
+    ```json
+    {
+      "tool": "find_similar_entities",
+      "arguments": {
+        "entity_id": "Deep Learning",
+        "top_n": 5
+      }
+    }
+    ```
+
+5. **Discover connections between concepts**:
+    ```json
+    {
+      "tool": "get_common_neighbors",
+      "arguments": {
+        "entity1": "Machine Learning",
+        "entity2": "Statistics"
+      }
+    }
+    ```
+
+6. **Find paths between distant entities**:
+    ```json
+    {
+      "tool": "find_path",
+      "arguments": {
+        "source_entity": "Reinforcement Learning",
+        "target_entity": "Computer Vision"
+      }
+    }
+    ```
+
+7. **Detect ghost nodes and gaps**:
+    ```json
+    {"tool": "find_ghost_nodes", "arguments": {}}
+    ```
+
+8. **Find structural weak points**:
+    ```json
+    {"tool": "find_isolated_entities", "arguments": {}}
+    ```
+
+9. **Identify information gatekeepers**:
+    ```json
+    {"tool": "find_bridge_entities", "arguments": {}}
+    ```
 
 ### System Monitoring Workflow
 
@@ -646,7 +867,7 @@ All errors include:
 #### Tool Not Found
 - **Restart MCP client**: Reload server configuration
 - **Check tool name**: Verify exact tool name spelling
-- **Server registration**: Ensure all 22 tools are listed
+- **Server registration**: Ensure all 32 tools are listed
 
 ### Debug Mode
 

@@ -422,3 +422,130 @@ class DocsStatusesResponse(BaseModel):
     """Response model for multiple document statuses."""
     statuses: List[DocStatusResponse] = Field(default_factory=list)
     total: int = Field(0, ge=0)
+
+
+# Knowledge Graph traversal models
+
+class FindPathRequest(BaseModel):
+    """Request model for finding a path between two entities."""
+    source_entity: str = Field(..., description="Source entity name or ID")
+    target_entity: str = Field(..., description="Target entity name or ID")
+
+
+class FindPathResponse(BaseModel):
+    """Response model for entity path finding."""
+    found: bool = Field(..., description="Whether a path was found")
+    path: List[str] = Field(default_factory=list, description="Entity IDs along the path")
+    path_length: int = Field(0, description="Number of hops in the path")
+    entities: List[Dict[str, Any]] = Field(default_factory=list, description="Entity details along the path")
+
+
+class RandomEntityResponse(BaseModel):
+    """Response model for a random entity."""
+    entity: Dict[str, Any] = Field(..., description="Random entity data")
+
+
+class RandomDisconnectResponse(BaseModel):
+    """Response model for two random disconnected entities."""
+    entity1: Dict[str, Any] = Field(..., description="First entity")
+    entity2: Dict[str, Any] = Field(..., description="Second entity")
+
+
+# Graph exploration and analysis models
+
+class EntityNeighborsResponse(BaseModel):
+    """Response model for entity neighbors."""
+    entity: Dict[str, Any] = Field(..., description="The query entity")
+    neighbors: List[Dict[str, Any]] = Field(default_factory=list, description="Direct neighbor entities")
+    neighbor_count: int = Field(0, description="Number of direct neighbors")
+
+
+class MostConnectedEntity(BaseModel):
+    """A ranked entity by connection degree."""
+    entity_id: str = Field(..., description="Entity ID")
+    entity_name: Optional[str] = None
+    degree: int = Field(..., description="Number of connections (degree)")
+    entity: Dict[str, Any] = Field(default_factory=dict, description="Full entity data")
+
+
+class MostConnectedResponse(BaseModel):
+    """Response model for most connected entities."""
+    entities: List[MostConnectedEntity] = Field(default_factory=list, description="Ranked entities")
+    graph_is_truncated: bool = Field(False, description="Whether the subgraph was truncated")
+
+
+class GraphStatsResponse(BaseModel):
+    """Response model for graph statistics."""
+    node_count: int = Field(0, description="Total nodes in the subgraph")
+    edge_count: int = Field(0, description="Total edges in the subgraph")
+    density: float = Field(0.0, description="Graph density (0-1)")
+    avg_degree: float = Field(0.0, description="Average degree")
+    max_degree: int = Field(0, description="Maximum degree of any node")
+    isolated_count: int = Field(0, description="Nodes with zero connections")
+    is_truncated: bool = Field(False, description="Whether the subgraph was truncated")
+
+
+class SimilarEntity(BaseModel):
+    """An entity similar to the query entity."""
+    entity_id: str = Field(..., description="Entity ID")
+    entity_name: Optional[str] = None
+    similarity: float = Field(..., ge=0, le=1, description="Jaccard similarity score")
+    shared_neighbors: List[str] = Field(default_factory=list, description="Shared neighbor IDs")
+    entity: Dict[str, Any] = Field(default_factory=dict, description="Full entity data")
+
+
+class SimilarEntitiesResponse(BaseModel):
+    """Response model for similar entities."""
+    source_entity: Dict[str, Any] = Field(..., description="The query entity")
+    similar_entities: List[SimilarEntity] = Field(default_factory=list, description="Similar entities ranked by similarity")
+
+
+class CommonNeighborsResponse(BaseModel):
+    """Response model for common neighbors between two entities."""
+    entity1: Dict[str, Any] = Field(..., description="First entity")
+    entity2: Dict[str, Any] = Field(..., description="Second entity")
+    common_neighbors: List[Dict[str, Any]] = Field(default_factory=list, description="Common neighbor entities")
+    common_count: int = Field(0, description="Number of common neighbors")
+
+
+class IsolatedEntitiesResponse(BaseModel):
+    """Response model for isolated entities."""
+    isolated: List[Dict[str, Any]] = Field(default_factory=list, description="Isolated entities")
+    count: int = Field(0, description="Number of isolated entities found")
+    graph_is_truncated: bool = Field(False, description="Whether the subgraph was truncated")
+
+
+class BridgeEntity(BaseModel):
+    """An articulation point entity."""
+    entity_id: str = Field(..., description="Entity ID")
+    entity_name: Optional[str] = None
+    entity: Dict[str, Any] = Field(default_factory=dict, description="Full entity data")
+
+
+class BridgeEntitiesResponse(BaseModel):
+    """Response model for bridge entities (articulation points)."""
+    bridge_entities: List[BridgeEntity] = Field(default_factory=list, description="Bridge/articulation point entities")
+    count: int = Field(0, description="Number of bridge entities found")
+    graph_is_truncated: bool = Field(False, description="Whether the subgraph was truncated")
+
+
+class LabelPopularityResponse(BaseModel):
+    """Response model for label popularity."""
+    entity_labels: List[Dict[str, Any]] = Field(default_factory=list, description="Entity label popularity")
+    relation_labels: List[Dict[str, Any]] = Field(default_factory=list, description="Relation label popularity")
+
+
+class GhostNode(BaseModel):
+    """A ghost node: frequently targeted but never a source."""
+    entity_id: str = Field(..., description="Entity ID")
+    entity_name: Optional[str] = None
+    target_count: int = Field(0, description="Times this entity appears as a target")
+    source_count: int = Field(0, description="Times this entity appears as a source")
+    entity: Dict[str, Any] = Field(default_factory=dict, description="Full entity data")
+
+
+class GhostNodesResponse(BaseModel):
+    """Response model for ghost node analysis."""
+    ghost_nodes: List[GhostNode] = Field(default_factory=list, description="Ghost node entities (target-only)")
+    count: int = Field(0, description="Number of ghost nodes found")
+    graph_is_truncated: bool = Field(False, description="Whether the subgraph was truncated")

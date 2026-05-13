@@ -17,7 +17,15 @@ from .models import (
     DeleteDocByIdResponse, ClearDocumentsResponse, PipelineStatusResponse, TrackStatusResponse,
     StatusCountsResponse, ClearCacheResponse, DeletionResult, QueryResponse, GraphResponse,
     LabelsResponse, EntityExistsResponse, EntityUpdateResponse, RelationUpdateResponse,
-    HealthResponse, TextDocument
+    HealthResponse, TextDocument,
+    # Graph traversal models
+    RandomEntityResponse, FindPathResponse, RandomDisconnectResponse,
+    # Graph exploration models
+    EntityNeighborsResponse, MostConnectedEntity, MostConnectedResponse,
+    GraphStatsResponse, SimilarEntity, SimilarEntitiesResponse,
+    CommonNeighborsResponse, IsolatedEntitiesResponse,
+    BridgeEntity, BridgeEntitiesResponse, LabelPopularityResponse,
+    GhostNode, GhostNodesResponse
 )
 
 
@@ -415,9 +423,13 @@ class LightRAGClient:
     
     # Knowledge Graph Methods (8 methods)
     
-    async def get_knowledge_graph(self, label: str = "*") -> GraphResponse:
+    async def get_knowledge_graph(self, label: str = "*", max_depth: Optional[int] = None, max_nodes: Optional[int] = None) -> GraphResponse:
         """Retrieve the knowledge graph from LightRAG."""
         params = {"label": label}
+        if max_depth is not None:
+            params["max_depth"] = max_depth
+        if max_nodes is not None:
+            params["max_nodes"] = max_nodes
         response_data = await self._make_request("GET", "/graphs", params=params)
         return GraphResponse(**response_data)
     
@@ -474,6 +486,477 @@ class LightRAGClient:
         request_data = DeleteRelationRequest(relation_id=relation_id, source_entity=source_entity, target_entity=target_entity)
         response_data = await self._make_request("DELETE", "/documents/delete_relation", request_data.model_dump())
         return DeletionResult(**response_data)
+    
+    # Knowledge Graph Traversal Methods (3 methods)
+    
+    async def get_random_entity(self) -> "RandomEntityResponse":
+        """Get a random entity from the knowledge graph."""
+        import random
+        
+        graph = await self.get_knowledge_graph(label="*", max_nodes=2000)
+        nodes = graph.nodes
+        if not nodes:
+            raise LightRAGAPIError("No entities found in the knowledge graph")
+        
+        entity = random.choice(nodes)
+        return RandomEntityResponse(entity=entity)
+    
+    async def find_path(self, source_entity: str, target_entity: str, max_depth: int = 10) -> "FindPathResponse":
+        """Find a path between two entities in the knowledge graph using BFS on the subgraph."""
+        from collections import deque
+        
+        # Fetch subgraph centered on source_entity with specified depth
+        graph = await self.get_knowledge_graph(label=source_entity, max_depth=max_depth, max_nodes=2000)
+        nodes = graph.nodes
+        edges = graph.edges
+        
+        node_ids = {n.get('id', ''): n for n in nodes}
+        # Also index by entity name (some APIs use 'entity_name' or 'name')
+        id_by_name = {}
+        for n in nodes:
+            for key in ('entity_name', 'name', 'label'):
+                val = n.get(key)
+                if val:
+                    id_by_name[val] = n.get('id', '')
+        
+        # Resolve source and target to node IDs
+        def resolve_node_id(identifier: str) -> Optional[str]:
+            if identifier in node_ids:
+                return identifier
+            if identifier in id_by_name:
+                return id_by_name[identifier]
+            # Try case-insensitive match
+            lower = identifier.lower()
+            for nid, node in node_ids.items():
+                for key in ('entity_name', 'name', 'label', 'id'):
+                    if str(node.get(key, '')).lower() == lower:
+                        return nid
+            return None
+        
+        src_id = resolve_node_id(source_entity)
+        tgt_id = resolve_node_id(target_entity)
+        
+        if src_id is None:
+            raise LightRAGAPIError(f"Source entity '{source_entity}' not found in the knowledge graph")
+        if tgt_id is None:
+            raise LightRAGAPIError(f"Target entity '{target_entity}' not found in the knowledge graph")
+        
+        if src_id == tgt_id:
+            return FindPathResponse(found=True, path=[src_id], path_length=0, entities=[node_ids[src_id]])
+        
+        # Build adjacency list
+        adj = {nid: [] for nid in node_ids}
+        for edge in edges:
+            src = edge.get('source_id') or edge.get('source')
+            tgt = edge.get('target_id') or edge.get('target')
+            if src in adj and tgt in adj:
+                adj[src].append(tgt)
+                adj[tgt].append(src)
+        
+        # BFS
+        visited = {src_id}
+        parent = {src_id: None}
+        queue = deque([src_id])
+        
+        while queue:
+            current = queue.popleft()
+            if current == tgt_id:
+                break
+            for neighbor in adj[current]:
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    parent[neighbor] = current
+                    queue.append(neighbor)
+        
+        if tgt_id not in parent:
+            return FindPathResponse(found=False, path=[], path_length=0, entities=[])
+        
+        # Reconstruct path
+        path_ids = []
+        node = tgt_id
+        while node is not None:
+            path_ids.append(node)
+            node = parent[node]
+        path_ids.reverse()
+        
+        path_entities = [node_ids[nid] for nid in path_ids if nid in node_ids]
+        
+        return FindPathResponse(
+            found=True,
+            path=path_ids,
+            path_length=len(path_ids) - 1,
+            entities=path_entities
+        )
+    
+    async def get_random_disconnect(self) -> "RandomDisconnectResponse":
+        """Get two entities that are not directly linked in the current graph."""
+        import random
+        
+        graph = await self.get_knowledge_graph(label="*", max_nodes=2000)
+        nodes = graph.nodes
+        edges = graph.edges
+        
+        if len(nodes) < 2:
+            raise LightRAGAPIError("Need at least 2 entities in the knowledge graph")
+        
+        # Build adjacency set for direct connections
+        adj = {n.get('id', ''): set() for n in nodes}
+        for edge in edges:
+            src = edge.get('source_id') or edge.get('source')
+            tgt = edge.get('target_id') or edge.get('target')
+            if src in adj and tgt in adj:
+                adj[src].add(tgt)
+                adj[tgt].add(src)
+        
+        # Pick two random nodes that are NOT directly connected
+        node_list = list(nodes)
+        random.shuffle(node_list)
+        
+        for i, n1 in enumerate(node_list):
+            n1_id = n1.get('id', '')
+            for n2 in node_list[i + 1:]:
+                n2_id = n2.get('id', '')
+                if n2_id not in adj.get(n1_id, set()):
+                    return RandomDisconnectResponse(entity1=n1, entity2=n2)
+        
+        raise LightRAGAPIError("All entities are directly connected (complete graph)")
+    
+    # Graph Exploration and Analysis Methods (9 methods)
+    
+    async def get_entity_neighbors(self, entity_id: str) -> "EntityNeighborsResponse":
+        """Get all direct neighbors of an entity including edge types."""
+        graph = await self.get_knowledge_graph(label=entity_id, max_depth=1, max_nodes=2000)
+        nodes = {n.get('id', ''): n for n in graph.nodes}
+        entity = nodes.get(entity_id)
+        if entity is None:
+            for n in graph.nodes:
+                for key in ('entity_name', 'name', 'label'):
+                    if str(n.get(key, '')).lower() == entity_id.lower():
+                        entity = n
+                        entity_id = n.get('id', entity_id)
+                        break
+                if entity:
+                    break
+        if entity is None:
+            raise LightRAGAPIError(f"Entity '{entity_id}' not found in the knowledge graph")
+        
+        neighbor_ids = set()
+        neighbor_data = []
+        for edge in graph.edges:
+            src = edge.get('source_id') or edge.get('source')
+            tgt = edge.get('target_id') or edge.get('target')
+            if src == entity_id and tgt in nodes and tgt not in neighbor_ids:
+                neighbor_ids.add(tgt)
+                neighbor_data.append(dict(nodes[tgt], relation=edge.get('type', 'unknown')))
+            elif tgt == entity_id and src in nodes and src not in neighbor_ids:
+                neighbor_ids.add(src)
+                neighbor_data.append(dict(nodes[src], relation=edge.get('type', 'unknown')))
+        
+        return EntityNeighborsResponse(entity=entity, neighbors=neighbor_data, neighbor_count=len(neighbor_data))
+    
+    async def get_most_connected_entities(self, top_n: int = 10) -> "MostConnectedResponse":
+        """Get top N entities by connection degree."""
+        graph = await self.get_knowledge_graph(label="*", max_nodes=3000)
+        nodes = {n.get('id', ''): n for n in graph.nodes}
+        degree = {nid: 0 for nid in nodes}
+        
+        for edge in graph.edges:
+            src = edge.get('source_id') or edge.get('source')
+            tgt = edge.get('target_id') or edge.get('target')
+            if src in degree:
+                degree[src] += 1
+            if tgt in degree:
+                degree[tgt] += 1
+        
+        ranked = sorted(degree.items(), key=lambda x: x[1], reverse=True)[:top_n]
+        entities = []
+        for nid, deg in ranked:
+            node = nodes[nid]
+            name = node.get('entity_name') or node.get('name') or node.get('label')
+            entities.append(MostConnectedEntity(
+                entity_id=nid,
+                entity_name=name,
+                degree=deg,
+                entity=node
+            ))
+        
+        return MostConnectedResponse(entities=entities, graph_is_truncated=graph.is_truncated)
+    
+    async def get_graph_stats(self) -> "GraphStatsResponse":
+        """Get graph statistics: node count, edge count, density, avg degree, etc."""
+        graph = await self.get_knowledge_graph(label="*", max_nodes=3000)
+        nodes = graph.nodes
+        edges = graph.edges
+        
+        n = len(nodes)
+        m = len(edges)
+        max_possible_edges = n * (n - 1) / 2 if n > 1 else 1
+        density = m / max_possible_edges if max_possible_edges > 0 else 0.0
+        avg_degree = (2 * m) / n if n > 0 else 0.0
+        
+        degree = {node.get('id', ''): 0 for node in nodes}
+        for edge in edges:
+            src = edge.get('source_id') or edge.get('source')
+            tgt = edge.get('target_id') or edge.get('target')
+            if src in degree:
+                degree[src] += 1
+            if tgt in degree:
+                degree[tgt] += 1
+        
+        max_deg = max(degree.values()) if degree else 0
+        isolated_count = sum(1 for d in degree.values() if d == 0)
+        
+        return GraphStatsResponse(
+            node_count=n,
+            edge_count=m,
+            density=round(density, 6),
+            avg_degree=round(avg_degree, 2),
+            max_degree=max_deg,
+            isolated_count=isolated_count,
+            is_truncated=graph.is_truncated
+        )
+    
+    async def find_similar_entities(self, entity_id: str, top_n: int = 5) -> "SimilarEntitiesResponse":
+        """Find entities similar to the given entity using Jaccard similarity on shared neighbors."""
+        graph = await self.get_knowledge_graph(label=entity_id, max_depth=2, max_nodes=3000)
+        nodes = {n.get('id', ''): n for n in graph.nodes}
+        
+        # Build neighbor sets
+        neighbors = {nid: set() for nid in nodes}
+        for edge in graph.edges:
+            src = edge.get('source_id') or edge.get('source')
+            tgt = edge.get('target_id') or edge.get('target')
+            if src in neighbors and tgt in neighbors:
+                neighbors[src].add(tgt)
+                neighbors[tgt].add(src)
+        
+        # Resolve entity
+        resolved_id = entity_id
+        if resolved_id not in nodes:
+            for nid, n in nodes.items():
+                for key in ('entity_name', 'name', 'label'):
+                    if str(n.get(key, '')).lower() == entity_id.lower():
+                        resolved_id = nid
+                        break
+                if resolved_id != entity_id:
+                    break
+        
+        if resolved_id not in nodes:
+            raise LightRAGAPIError(f"Entity '{entity_id}' not found in the knowledge graph")
+        
+        source_entity = nodes[resolved_id]
+        source_neighbors = neighbors.get(resolved_id, set())
+        
+        similar = []
+        for nid in nodes:
+            if nid == resolved_id:
+                continue
+            nbrs = neighbors.get(nid, set())
+            intersection = source_neighbors & nbrs
+            union = source_neighbors | nbrs
+            if not union:
+                continue
+            jaccard = len(intersection) / len(union)
+            if jaccard > 0:
+                name = nodes[nid].get('entity_name') or nodes[nid].get('name') or nodes[nid].get('label')
+                similar.append(SimilarEntity(
+                    entity_id=nid,
+                    entity_name=name,
+                    similarity=round(jaccard, 4),
+                    shared_neighbors=list(intersection),
+                    entity=nodes[nid]
+                ))
+        
+        similar.sort(key=lambda x: x.similarity, reverse=True)
+        
+        return SimilarEntitiesResponse(
+            source_entity=source_entity,
+            similar_entities=similar[:top_n]
+        )
+    
+    async def get_common_neighbors(self, entity1: str, entity2: str) -> "CommonNeighborsResponse":
+        """Get entities connected to both of two given entities."""
+        # Fetch subgraph centered on entity1 with enough depth
+        graph = await self.get_knowledge_graph(label=entity1, max_depth=5, max_nodes=3000)
+        nodes = {n.get('id', ''): n for n in graph.nodes}
+        
+        def resolve(identifier: str) -> Optional[str]:
+            if identifier in nodes:
+                return identifier
+            for nid, n in nodes.items():
+                for key in ('entity_name', 'name', 'label'):
+                    if str(n.get(key, '')).lower() == identifier.lower():
+                        return nid
+            return None
+        
+        id1 = resolve(entity1)
+        id2 = resolve(entity2)
+        if id1 is None:
+            raise LightRAGAPIError(f"Entity '{entity1}' not found in the knowledge graph")
+        if id2 is None:
+            # Try fetching from entity2's perspective
+            graph2 = await self.get_knowledge_graph(label=entity2, max_depth=5, max_nodes=3000)
+            nodes2 = {n.get('id', ''): n for n in graph2.nodes}
+            for n in nodes:
+                nid = n.get('id', '')
+                if nid not in nodes2:
+                    nodes2[nid] = n
+            nodes = nodes2
+            id2 = resolve(entity2)
+            if id2 is None:
+                raise LightRAGAPIError(f"Entity '{entity2}' not found in the knowledge graph")
+        
+        e1_data = nodes.get(id1, {})
+        e2_data = nodes.get(id2, {})
+        
+        # Build neighbor sets
+        neighbors = {nid: set() for nid in nodes}
+        for edge in graph.edges:
+            src = edge.get('source_id') or edge.get('source')
+            tgt = edge.get('target_id') or edge.get('target')
+            if src in neighbors and tgt in neighbors:
+                neighbors[src].add(tgt)
+                neighbors[tgt].add(src)
+        
+        common_ids = neighbors.get(id1, set()) & neighbors.get(id2, set())
+        common_list = [nodes[nid] for nid in common_ids if nid in nodes]
+        
+        return CommonNeighborsResponse(
+            entity1=e1_data,
+            entity2=e2_data,
+            common_neighbors=common_list,
+            common_count=len(common_list)
+        )
+    
+    async def find_isolated_entities(self) -> "IsolatedEntitiesResponse":
+        """Find entities with zero or one connection in the knowledge graph."""
+        graph = await self.get_knowledge_graph(label="*", max_nodes=3000)
+        nodes = graph.nodes
+        degree = {node.get('id', ''): 0 for node in nodes}
+        
+        for edge in graph.edges:
+            src = edge.get('source_id') or edge.get('source')
+            tgt = edge.get('target_id') or edge.get('target')
+            if src in degree:
+                degree[src] += 1
+            if tgt in degree:
+                degree[tgt] += 1
+        
+        isolated = [node for node in nodes if degree.get(node.get('id', ''), 0) <= 1]
+        
+        return IsolatedEntitiesResponse(
+            isolated=isolated,
+            count=len(isolated),
+            graph_is_truncated=graph.is_truncated
+        )
+    
+    async def find_bridge_entities(self) -> "BridgeEntitiesResponse":
+        """Find articulation points (bridge entities) whose removal would split the subgraph."""
+        graph = await self.get_knowledge_graph(label="*", max_nodes=3000)
+        nodes = graph.nodes
+        edges = graph.edges
+        
+        nid_list = [n.get('id', '') for n in nodes]
+        node_map = {nid: i for i, nid in enumerate(nid_list)}
+        
+        # Build adjacency
+        adj = [[] for _ in range(len(nid_list))]
+        for edge in edges:
+            src = edge.get('source_id') or edge.get('source')
+            tgt = edge.get('target_id') or edge.get('target')
+            if src in node_map and tgt in node_map:
+                u, v = node_map[src], node_map[tgt]
+                adj[u].append(v)
+                adj[v].append(u)
+        
+        # Tarjan's algorithm for articulation points
+        visited = [False] * len(nid_list)
+        disc = [0] * len(nid_list)
+        low = [0] * len(nid_list)
+        parent = [-1] * len(nid_list)
+        ap = [False] * len(nid_list)
+        time = [0]
+        
+        def dfs(u: int):
+            children = 0
+            visited[u] = True
+            time[0] += 1
+            disc[u] = low[u] = time[0]
+            
+            for v in adj[u]:
+                if not visited[v]:
+                    children += 1
+                    parent[v] = u
+                    dfs(v)
+                    low[u] = min(low[u], low[v])
+                    if parent[u] == -1 and children > 1:
+                        ap[u] = True
+                    if parent[u] != -1 and low[v] >= disc[u]:
+                        ap[u] = True
+                elif v != parent[u]:
+                    low[u] = min(low[u], disc[v])
+        
+        for i in range(len(nid_list)):
+            if not visited[i]:
+                dfs(i)
+        
+        bridges = []
+        for i, is_ap in enumerate(ap):
+            if is_ap:
+                nid = nid_list[i]
+                name = nodes[i].get('entity_name') or nodes[i].get('name') or nodes[i].get('label')
+                bridges.append(BridgeEntity(
+                    entity_id=nid,
+                    entity_name=name,
+                    entity=nodes[i]
+                ))
+        
+        return BridgeEntitiesResponse(
+            bridge_entities=bridges,
+            count=len(bridges),
+            graph_is_truncated=graph.is_truncated
+        )
+    
+    async def get_graph_label_popularity(self) -> "LabelPopularityResponse":
+        """Get label popularity from the knowledge graph (wraps /graph/label/popular)."""
+        response_data = await self._make_request("GET", "/graph/label/popular")
+        return LabelPopularityResponse(**response_data)
+    
+    async def find_ghost_nodes(self) -> "GhostNodesResponse":
+        """Find entities that appear as targets in relations but never as sources (ghost nodes)."""
+        graph = await self.get_knowledge_graph(label="*", max_nodes=3000)
+        nodes = {n.get('id', ''): n for n in graph.nodes}
+        
+        source_count = {nid: 0 for nid in nodes}
+        target_count = {nid: 0 for nid in nodes}
+        
+        for edge in graph.edges:
+            src = edge.get('source_id') or edge.get('source')
+            tgt = edge.get('target_id') or edge.get('target')
+            if src in source_count:
+                source_count[src] += 1
+            if tgt in target_count:
+                target_count[tgt] += 1
+        
+        ghosts = []
+        for nid, node in nodes.items():
+            if source_count.get(nid, 0) == 0 and target_count.get(nid, 0) > 0:
+                name = node.get('entity_name') or node.get('name') or node.get('label')
+                ghosts.append(GhostNode(
+                    entity_id=nid,
+                    entity_name=name,
+                    target_count=target_count[nid],
+                    source_count=0,
+                    entity=node
+                ))
+        
+        ghosts.sort(key=lambda x: x.target_count, reverse=True)
+        
+        return GhostNodesResponse(
+            ghost_nodes=ghosts,
+            count=len(ghosts),
+            graph_is_truncated=graph.is_truncated
+        )
     
     # System Management Methods (4 methods)
     

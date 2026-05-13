@@ -71,6 +71,10 @@ def _validate_tool_arguments(tool_name: str, arguments: Dict[str, Any]) -> None:
         "delete_entity": ["entity_id"],
         "delete_relation": ["relation_id"],
         "get_track_status": ["track_id"],
+        "find_path": ["source_entity", "target_entity"],
+        "get_entity_neighbors": ["entity_id"],
+        "find_similar_entities": ["entity_id"],
+        "get_common_neighbors": ["entity1", "entity2"],
     }
     
     # Check if tool requires specific arguments
@@ -591,6 +595,164 @@ async def handle_list_tools() -> List[Tool]:#ListToolsResult:
                     }
                 },
                 "required": ["relation_id"]
+            }
+        ),
+        Tool(
+            name="get_random_entity",
+            description="Get a random entity from the knowledge graph",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
+        Tool(
+            name="find_path",
+            description="Find a path between two entities in the knowledge graph. Uses BFS on the subgraph centered on the source entity.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "source_entity": {
+                        "type": "string",
+                        "description": "Name or ID of the source entity"
+                    },
+                    "target_entity": {
+                        "type": "string",
+                        "description": "Name or ID of the target entity"
+                    },
+                    "max_depth": {
+                        "type": "integer",
+                        "description": "Maximum path depth to search (default: 10)",
+                        "minimum": 1,
+                        "maximum": 50,
+                        "default": 10
+                    }
+                },
+                "required": ["source_entity", "target_entity"]
+            }
+        ),
+        Tool(
+            name="get_random_disconnect",
+            description="Get two entities that are not directly linked in the current knowledge graph",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
+        Tool(
+            name="get_entity_neighbors",
+            description="Get all direct neighbors of an entity along with their relation types",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "entity_id": {
+                        "type": "string",
+                        "description": "Name or ID of the entity"
+                    }
+                },
+                "required": ["entity_id"]
+            }
+        ),
+        Tool(
+            name="get_most_connected_entities",
+            description="Get top N entities ranked by connection degree (most central hubs in the knowledge graph)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "top_n": {
+                        "type": "integer",
+                        "description": "Number of top entities to return (default: 10)",
+                        "minimum": 1,
+                        "maximum": 100,
+                        "default": 10
+                    }
+                },
+                "required": []
+            }
+        ),
+        Tool(
+            name="get_graph_stats",
+            description="Get graph statistics: node count, edge count, density, average degree, max degree, isolated node count",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
+        Tool(
+            name="find_similar_entities",
+            description="Find entities similar to a given entity using Jaccard similarity on shared neighbors",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "entity_id": {
+                        "type": "string",
+                        "description": "Name or ID of the entity to find similar entities for"
+                    },
+                    "top_n": {
+                        "type": "integer",
+                        "description": "Number of similar entities to return (default: 5)",
+                        "minimum": 1,
+                        "maximum": 50,
+                        "default": 5
+                    }
+                },
+                "required": ["entity_id"]
+            }
+        ),
+        Tool(
+            name="get_common_neighbors",
+            description="Get entities connected to both of two given entities (the 'glue' between concepts)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "entity1": {
+                        "type": "string",
+                        "description": "Name or ID of the first entity"
+                    },
+                    "entity2": {
+                        "type": "string",
+                        "description": "Name or ID of the second entity"
+                    }
+                },
+                "required": ["entity1", "entity2"]
+            }
+        ),
+        Tool(
+            name="find_isolated_entities",
+            description="Find entities with zero or one connection — reveals under-connected knowledge gaps",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
+        Tool(
+            name="find_bridge_entities",
+            description="Find articulation points (bridge entities) whose removal would split the subgraph — information gatekeepers",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
+        Tool(
+            name="get_graph_label_popularity",
+            description="Get label popularity for entity and relation types across the knowledge graph",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
+        Tool(
+            name="find_ghost_nodes",
+            description="Find entities that appear as targets in relations but never as sources — ghost nodes reveal gaps in knowledge capture",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
             }
         ),
     ])
@@ -1856,6 +2018,244 @@ async def handle_call_tool(self, request: CallToolRequest) -> dict:
                 logger.error(f"  - Relation ID: {relation_id}")
                 import traceback
                 logger.error(f"  - Full traceback: {traceback.format_exc()}")
+                raise
+        
+        # Knowledge Graph Traversal Tools (3 tools)
+        elif tool_name == "get_random_entity":
+            logger.info("EXECUTING GET_RANDOM_ENTITY TOOL:")
+            logger.info(f"  - Tool: {tool_name}")
+            logger.info("  - Calling lightrag_client.get_random_entity()...")
+            
+            try:
+                result = await lightrag_client.get_random_entity()
+                logger.info("GET_RANDOM_ENTITY SUCCESS:")
+                logger.info(f"  - Result type: {type(result)}")
+                logger.info(f"  - Result content: {repr(result)}")
+                if hasattr(result, 'model_dump'):
+                    try:
+                        result_dump = result.model_dump()
+                        entity = result_dump.get('entity', {})
+                        logger.info(f"RANDOM ENTITY:")
+                        logger.info(f"    - Entity ID: {entity.get('id', 'N/A')}")
+                        logger.info(f"    - Entity name: {entity.get('entity_name', entity.get('name', 'N/A'))}")
+                    except Exception as e:
+                        logger.error(f"  - model_dump() failed: {e}")
+                
+                response = _create_success_response(result, tool_name)
+                logger.info(f"  - Success response created")
+                return response
+            except Exception as e:
+                logger.error("GET_RANDOM_ENTITY FAILED:")
+                logger.error(f"  - Exception type: {type(e)}")
+                logger.error(f"  - Exception message: {str(e)}")
+                import traceback
+                logger.error(f"  - Full traceback: {traceback.format_exc()}")
+                raise
+        
+        elif tool_name == "find_path":
+            logger.info("EXECUTING FIND_PATH TOOL:")
+            logger.info(f"  - Tool: {tool_name}")
+            logger.info(f"  - Raw arguments: {arguments}")
+            
+            source_entity = arguments.get("source_entity", "")
+            target_entity = arguments.get("target_entity", "")
+            max_depth = arguments.get("max_depth", 10)
+            
+            logger.info(f"FIND_PATH PARAMETERS:")
+            logger.info(f"  - source_entity: '{source_entity}'")
+            logger.info(f"  - target_entity: '{target_entity}'")
+            logger.info(f"  - max_depth: {max_depth}")
+            
+            if not source_entity or not source_entity.strip():
+                logger.error("FIND_PATH VALIDATION ERROR: source_entity is empty")
+                raise LightRAGValidationError("source_entity cannot be empty")
+            
+            if not target_entity or not target_entity.strip():
+                logger.error("FIND_PATH VALIDATION ERROR: target_entity is empty")
+                raise LightRAGValidationError("target_entity cannot be empty")
+            
+            logger.info("  - Parameter validation passed")
+            logger.info("  - Calling lightrag_client.find_path()...")
+            
+            try:
+                result = await lightrag_client.find_path(source_entity, target_entity, max_depth)
+                logger.info("FIND_PATH SUCCESS:")
+                logger.info(f"  - Result type: {type(result)}")
+                if hasattr(result, 'model_dump'):
+                    try:
+                        result_dump = result.model_dump()
+                        logger.info(f"PATH FINDING RESULT:")
+                        logger.info(f"    - Found: {result_dump.get('found', False)}")
+                        logger.info(f"    - Path length: {result_dump.get('path_length', 0)}")
+                        logger.info(f"    - Path: {result_dump.get('path', [])}")
+                    except Exception as e:
+                        logger.error(f"  - model_dump() failed: {e}")
+                
+                response = _create_success_response(result, tool_name)
+                logger.info(f"  - Success response created")
+                return response
+            except Exception as e:
+                logger.error("FIND_PATH FAILED:")
+                logger.error(f"  - Exception type: {type(e)}")
+                logger.error(f"  - Exception message: {str(e)}")
+                logger.error(f"  - Source: '{source_entity}'")
+                logger.error(f"  - Target: '{target_entity}'")
+                import traceback
+                logger.error(f"  - Full traceback: {traceback.format_exc()}")
+                raise
+        
+        elif tool_name == "get_random_disconnect":
+            logger.info("EXECUTING GET_RANDOM_DISCONNECT TOOL:")
+            logger.info(f"  - Tool: {tool_name}")
+            logger.info("  - Calling lightrag_client.get_random_disconnect()...")
+            
+            try:
+                result = await lightrag_client.get_random_disconnect()
+                logger.info("GET_RANDOM_DISCONNECT SUCCESS:")
+                logger.info(f"  - Result type: {type(result)}")
+                if hasattr(result, 'model_dump'):
+                    try:
+                        result_dump = result.model_dump()
+                        entity1 = result_dump.get('entity1', {})
+                        entity2 = result_dump.get('entity2', {})
+                        logger.info(f"DISCONNECTED ENTITIES:")
+                        logger.info(f"    - Entity1 ID: {entity1.get('id', 'N/A')}")
+                        logger.info(f"    - Entity1 name: {entity1.get('entity_name', entity1.get('name', 'N/A'))}")
+                        logger.info(f"    - Entity2 ID: {entity2.get('id', 'N/A')}")
+                        logger.info(f"    - Entity2 name: {entity2.get('entity_name', entity2.get('name', 'N/A'))}")
+                    except Exception as e:
+                        logger.error(f"  - model_dump() failed: {e}")
+                
+                response = _create_success_response(result, tool_name)
+                logger.info(f"  - Success response created")
+                return response
+            except Exception as e:
+                logger.error("GET_RANDOM_DISCONNECT FAILED:")
+                logger.error(f"  - Exception type: {type(e)}")
+                logger.error(f"  - Exception message: {str(e)}")
+                import traceback
+                logger.error(f"  - Full traceback: {traceback.format_exc()}")
+                raise
+        
+        # Graph Exploration and Analysis Tools (9 tools)
+        elif tool_name == "get_entity_neighbors":
+            logger.info("EXECUTING GET_ENTITY_NEIGHBORS TOOL:")
+            entity_id = arguments.get("entity_id", "")
+            logger.info(f"  - entity_id: '{entity_id}'")
+            
+            if not entity_id or not entity_id.strip():
+                raise LightRAGValidationError("entity_id cannot be empty")
+            
+            try:
+                result = await lightrag_client.get_entity_neighbors(entity_id)
+                logger.info(f"GET_ENTITY_NEIGHBORS SUCCESS: {result.neighbor_count} neighbors")
+                return _create_success_response(result, tool_name)
+            except Exception as e:
+                logger.error(f"GET_ENTITY_NEIGHBORS FAILED: {e}")
+                raise
+        
+        elif tool_name == "get_most_connected_entities":
+            logger.info("EXECUTING GET_MOST_CONNECTED_ENTITIES TOOL:")
+            top_n = arguments.get("top_n", 10)
+            logger.info(f"  - top_n: {top_n}")
+            
+            try:
+                result = await lightrag_client.get_most_connected_entities(top_n)
+                logger.info(f"GET_MOST_CONNECTED_ENTITIES SUCCESS: {len(result.entities)} entities")
+                return _create_success_response(result, tool_name)
+            except Exception as e:
+                logger.error(f"GET_MOST_CONNECTED_ENTITIES FAILED: {e}")
+                raise
+        
+        elif tool_name == "get_graph_stats":
+            logger.info("EXECUTING GET_GRAPH_STATS TOOL:")
+            
+            try:
+                result = await lightrag_client.get_graph_stats()
+                logger.info(f"GET_GRAPH_STATS SUCCESS: {result.node_count} nodes, {result.edge_count} edges, density={result.density}")
+                return _create_success_response(result, tool_name)
+            except Exception as e:
+                logger.error(f"GET_GRAPH_STATS FAILED: {e}")
+                raise
+        
+        elif tool_name == "find_similar_entities":
+            logger.info("EXECUTING FIND_SIMILAR_ENTITIES TOOL:")
+            entity_id = arguments.get("entity_id", "")
+            top_n = arguments.get("top_n", 5)
+            logger.info(f"  - entity_id: '{entity_id}', top_n: {top_n}")
+            
+            if not entity_id or not entity_id.strip():
+                raise LightRAGValidationError("entity_id cannot be empty")
+            
+            try:
+                result = await lightrag_client.find_similar_entities(entity_id, top_n)
+                logger.info(f"FIND_SIMILAR_ENTITIES SUCCESS: {len(result.similar_entities)} similar entities")
+                return _create_success_response(result, tool_name)
+            except Exception as e:
+                logger.error(f"FIND_SIMILAR_ENTITIES FAILED: {e}")
+                raise
+        
+        elif tool_name == "get_common_neighbors":
+            logger.info("EXECUTING GET_COMMON_NEIGHBORS TOOL:")
+            entity1 = arguments.get("entity1", "")
+            entity2 = arguments.get("entity2", "")
+            logger.info(f"  - entity1: '{entity1}', entity2: '{entity2}'")
+            
+            if not entity1 or not entity1.strip():
+                raise LightRAGValidationError("entity1 cannot be empty")
+            if not entity2 or not entity2.strip():
+                raise LightRAGValidationError("entity2 cannot be empty")
+            
+            try:
+                result = await lightrag_client.get_common_neighbors(entity1, entity2)
+                logger.info(f"GET_COMMON_NEIGHBORS SUCCESS: {result.common_count} common neighbors")
+                return _create_success_response(result, tool_name)
+            except Exception as e:
+                logger.error(f"GET_COMMON_NEIGHBORS FAILED: {e}")
+                raise
+        
+        elif tool_name == "find_isolated_entities":
+            logger.info("EXECUTING FIND_ISOLATED_ENTITIES TOOL:")
+            
+            try:
+                result = await lightrag_client.find_isolated_entities()
+                logger.info(f"FIND_ISOLATED_ENTITIES SUCCESS: {result.count} isolated entities")
+                return _create_success_response(result, tool_name)
+            except Exception as e:
+                logger.error(f"FIND_ISOLATED_ENTITIES FAILED: {e}")
+                raise
+        
+        elif tool_name == "find_bridge_entities":
+            logger.info("EXECUTING FIND_BRIDGE_ENTITIES TOOL:")
+            
+            try:
+                result = await lightrag_client.find_bridge_entities()
+                logger.info(f"FIND_BRIDGE_ENTITIES SUCCESS: {result.count} bridge entities")
+                return _create_success_response(result, tool_name)
+            except Exception as e:
+                logger.error(f"FIND_BRIDGE_ENTITIES FAILED: {e}")
+                raise
+        
+        elif tool_name == "get_graph_label_popularity":
+            logger.info("EXECUTING GET_GRAPH_LABEL_POPULARITY TOOL:")
+            
+            try:
+                result = await lightrag_client.get_graph_label_popularity()
+                logger.info(f"GET_GRAPH_LABEL_POPULARITY SUCCESS")
+                return _create_success_response(result, tool_name)
+            except Exception as e:
+                logger.error(f"GET_GRAPH_LABEL_POPULARITY FAILED: {e}")
+                raise
+        
+        elif tool_name == "find_ghost_nodes":
+            logger.info("EXECUTING FIND_GHOST_NODES TOOL:")
+            
+            try:
+                result = await lightrag_client.find_ghost_nodes()
+                logger.info(f"FIND_GHOST_NODES SUCCESS: {result.count} ghost nodes found")
+                return _create_success_response(result, tool_name)
+            except Exception as e:
+                logger.error(f"FIND_GHOST_NODES FAILED: {e}")
                 raise
         
         # System Management Tools (5 tools)
