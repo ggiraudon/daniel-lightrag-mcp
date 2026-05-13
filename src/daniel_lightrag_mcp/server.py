@@ -2633,6 +2633,7 @@ async def main_http(host: str = "0.0.0.0", port: int = 8000):
     # Lazy imports to keep stdio dependencies optional
     from mcp.server.sse import SseServerTransport
     from starlette.applications import Starlette
+    from starlette.middleware.cors import CORSMiddleware
     from starlette.routing import Route, Mount
     from starlette.responses import JSONResponse
     import uvicorn
@@ -2662,6 +2663,14 @@ async def main_http(host: str = "0.0.0.0", port: int = 8000):
             Route("/health", endpoint=health),
             Mount("/messages/", app=sse.handle_post_message),
         ],
+    )
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["*"],
+        expose_headers=["*"],
     )
 
     config = uvicorn.Config(app, host=host, port=port, log_level=logging.getLogger().level)
