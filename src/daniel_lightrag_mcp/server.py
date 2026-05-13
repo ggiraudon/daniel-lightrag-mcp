@@ -2657,6 +2657,7 @@ async def main_http(host: str = "0.0.0.0", port: int = 8000):
                 server.create_initialization_options(),
             )
         logger.info("SSE connection closed")
+        return JSONResponse({})
 
     async def health(request):
         return JSONResponse({"status": "ok", "transport": "sse"})
