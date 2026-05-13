@@ -20,6 +20,7 @@ from daniel_lightrag_mcp.client import (
     LightRAGValidationError,
     LightRAGAPIError
 )
+from daniel_lightrag_mcp.models import LabelsResponse
 
 
 class TestServerToolListing:
@@ -440,10 +441,7 @@ class TestKnowledgeGraphTools:
     async def test_get_graph_labels_success(self, mock_client):
         """Test successful graph labels retrieval."""
         # Setup mock
-        mock_result = {
-            "entity_labels": ["Person", "Organization", "Location"],
-            "relation_labels": ["works_for", "located_in", "related_to"]
-        }
+        mock_result = LabelsResponse(labels=["Person", "Organization", "Location", "works_for", "located_in", "related_to"])
         mock_client.get_graph_labels = AsyncMock(return_value=mock_result)
         
         # Create request

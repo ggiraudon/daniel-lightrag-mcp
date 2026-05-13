@@ -917,9 +917,13 @@ class LightRAGClient:
             graph_is_truncated=graph.is_truncated
         )
     
-    async def get_graph_label_popularity(self) -> "LabelPopularityResponse":
+    async def get_graph_label_popularity(self, limit: int = 300) -> "LabelPopularityResponse":
         """Get label popularity from the knowledge graph (wraps /graph/label/popular)."""
-        response_data = await self._make_request("GET", "/graph/label/popular")
+        params = {"limit": limit}
+        response_data = await self._make_request("GET", "/graph/label/popular", params=params)
+        # API returns a flat list of strings, wrap into model
+        if isinstance(response_data, list):
+            response_data = {"labels": response_data}
         return LabelPopularityResponse(**response_data)
     
     async def find_ghost_nodes(self) -> "GhostNodesResponse":

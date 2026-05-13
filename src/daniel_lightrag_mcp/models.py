@@ -311,8 +311,7 @@ class GraphResponse(BaseModel):
 
 class LabelsResponse(BaseModel):
     """Response model for graph labels."""
-    entity_labels: List[str] = Field(default_factory=list)
-    relation_labels: List[str] = Field(default_factory=list)
+    labels: List[str] = Field(default_factory=list, description="List of graph labels")
 
 
 class EntityExistsResponse(BaseModel):
@@ -531,8 +530,7 @@ class BridgeEntitiesResponse(BaseModel):
 
 class LabelPopularityResponse(BaseModel):
     """Response model for label popularity."""
-    entity_labels: List[Dict[str, Any]] = Field(default_factory=list, description="Entity label popularity")
-    relation_labels: List[Dict[str, Any]] = Field(default_factory=list, description="Relation label popularity")
+    labels: List[str] = Field(default_factory=list, description="Popular labels sorted by degree (highest first)")
 
 
 class GhostNode(BaseModel):

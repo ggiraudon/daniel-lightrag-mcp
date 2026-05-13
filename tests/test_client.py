@@ -383,11 +383,8 @@ class TestKnowledgeGraphMethods:
     
     async def test_get_graph_labels_success(self, lightrag_client, mock_response):
         """Test successful graph labels retrieval."""
-        # Setup mock
-        labels_response = {
-            "entity_labels": ["Person", "Organization"],
-            "relation_labels": ["works_for", "located_in"]
-        }
+        # API returns a flat list of strings
+        labels_response = ["Person", "Organization", "works_for", "located_in"]
         response = mock_response(200, labels_response)
         lightrag_client.client.get = AsyncMock(return_value=response)
         
@@ -395,10 +392,9 @@ class TestKnowledgeGraphMethods:
         result = await lightrag_client.get_graph_labels()
         
         # Verify
-        assert len(result.entity_labels) == 2
-        assert len(result.relation_labels) == 2
-        assert "Person" in result.entity_labels
-        assert "works_for" in result.relation_labels
+        assert len(result.labels) == 4
+        assert "Person" in result.labels
+        assert "works_for" in result.labels
         lightrag_client.client.get.assert_called_once_with(
             "http://localhost:9621/graph/label/list", params=None
         )

@@ -739,10 +739,18 @@ async def handle_list_tools() -> List[Tool]:#ListToolsResult:
         ),
         Tool(
             name="get_graph_label_popularity",
-            description="Get label popularity for entity and relation types across the knowledge graph",
+            description="Get popular labels sorted by node degree (most connected entities) across the knowledge graph",
             inputSchema={
                 "type": "object",
-                "properties": {},
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of popular labels to return (default: 300, max: 1000)",
+                        "minimum": 1,
+                        "maximum": 1000,
+                        "default": 300
+                    }
+                },
                 "required": []
             }
         ),
@@ -1680,15 +1688,11 @@ async def handle_call_tool(self, request: CallToolRequest) -> dict:
                     try:
                         result_dump = result.model_dump()
                         logger.info(f"  - Result.model_dump(): {result_dump}")
-                        entity_labels = result_dump.get('entity_labels', [])
-                        relation_labels = result_dump.get('relation_labels', [])
+                        labels = result_dump.get('labels', [])
                         logger.info(f"GRAPH LABELS:")
-                        logger.info(f"    - Entity labels count: {len(entity_labels)}")
-                        logger.info(f"    - Relation labels count: {len(relation_labels)}")
-                        if entity_labels:
-                            logger.info(f"    - Entity labels: {entity_labels}")
-                        if relation_labels:
-                            logger.info(f"    - Relation labels: {relation_labels}")
+                        logger.info(f"    - Labels count: {len(labels)}")
+                        if labels:
+                            logger.info(f"    - Labels: {labels[:20]}{'...' if len(labels) > 20 else ''}")
                     except Exception as e:
                         logger.error(f"  - model_dump() failed: {e}")
                 
@@ -2238,10 +2242,11 @@ async def handle_call_tool(self, request: CallToolRequest) -> dict:
         
         elif tool_name == "get_graph_label_popularity":
             logger.info("EXECUTING GET_GRAPH_LABEL_POPULARITY TOOL:")
+            limit = arguments.get("limit", 300)
             
             try:
-                result = await lightrag_client.get_graph_label_popularity()
-                logger.info(f"GET_GRAPH_LABEL_POPULARITY SUCCESS")
+                result = await lightrag_client.get_graph_label_popularity(limit=limit)
+                logger.info(f"GET_GRAPH_LABEL_POPULARITY SUCCESS: {len(result.labels)} labels")
                 return _create_success_response(result, tool_name)
             except Exception as e:
                 logger.error(f"GET_GRAPH_LABEL_POPULARITY FAILED: {e}")
